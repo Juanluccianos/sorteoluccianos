@@ -24,14 +24,17 @@ icons/
 
 Subí **todos** estos archivos al repositorio manteniendo la carpeta `icons/`.
 
-## Cómo instalarla en la tablet
+## Cómo instalarla en la tablet (que quede como app, no como acceso directo)
 
-1. Subí el repo a **GitHub Pages** (Settings → Pages → Deploy from branch → rama `main`, carpeta `/root`).
-2. Abrí la URL de GitHub Pages en el **Chrome de la tablet**.
-3. Menú de Chrome (⋮) → **Agregar a la pantalla principal / Instalar app**.
-4. Se abre a pantalla completa. Una vez abierta la primera vez, **queda disponible sin internet**.
+Para que quede **instalada de verdad** (ícono propio, pantalla completa, sin la barra de Chrome) hay que abrirla desde **una dirección web HTTPS**, no desde el archivo.
 
-> Alternativa sin servidor: podés abrir directamente el archivo `index.html` en el navegador de la tablet (funciona igual sin conexión), aunque para instalarla como app conviene GitHub Pages.
+1. Subí el repo a **GitHub Pages** (Settings → Pages → Deploy from branch → rama `main`, carpeta `/root`). Te queda una URL tipo `https://usuario.github.io/repo/`.
+2. Abrí esa URL en el **Chrome de la tablet**. Esperá unos segundos (se registra el modo sin conexión).
+3. Menú de Chrome (⋮) → tocá **"Instalar aplicación"**.
+   - ⚠️ Si solo aparece **"Agregar a la pantalla principal"**, eso crea un *acceso directo* que abre Chrome (no queda instalada). Suele pasar cuando se abre el archivo local en vez de la URL HTTPS. Usá siempre la URL de GitHub Pages y esperá a que aparezca **"Instalar aplicación"**.
+4. Listo: abre a pantalla completa con su ícono y **funciona sin internet**.
+
+> Nota: abrir el archivo `index.html` directamente (file://) también anda offline, pero **no** se puede instalar como app; para eso hace falta la URL HTTPS (GitHub Pages).
 
 ## Uso rápido
 
