@@ -11,8 +11,6 @@
 <meta name="apple-mobile-web-app-title" content="Ruleta">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<!-- OCR en el dispositivo (offline salvo la 1ª descarga del motor). Si no carga, la app avisa y seguís a mano. -->
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" defer></script>
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; height: 100%; touch-action: manipulation; -ms-touch-action: manipulation; }
@@ -130,6 +128,14 @@
   // Estado + persistencia (misma KEY que la versión anterior => migra solo)
   // ------------------------------------------------------------------
   var KEY = 'luc_sorteo_v1';
+
+  // ==================================================================
+  // OCR con IA: pegá acá la URL de tu Cloudflare Worker (el proxy).
+  // La API key NO va acá: vive en el Worker como secreto. Ver worker.js.
+  // Ej: 'https://ruleta-ocr.tucuenta.workers.dev'
+  // ==================================================================
+  var OCR_ENDPOINT = '';
+
   var S = { participants: [], winners: [], rigged: [], spinning: false, winner: null };
   var angle = 0;
   var pointerAngle = -Math.PI / 2;
@@ -462,90 +468,74 @@
   function closeAdmin() { $('admin').classList.add('hidden'); }
 
   // ------------------------------------------------------------------
-  // Cargar participantes desde una FOTO (OCR en el dispositivo)
-  // Extrae los mails (algo@algo) y toma la parte de ANTES del @.
-  // El resultado cae en el textarea para que lo revises antes de agregar.
+  // Cargar participantes desde una FOTO (OCR con IA vía proxy)
+  // Manda la foto al Worker, que le pega a la IA y devuelve los usuarios
+  // (la parte de ANTES del @). Caen en el textarea para que los revises.
   // ------------------------------------------------------------------
   function setOcr(msg, show) {
     if (msg != null) $('ocrStatus').textContent = msg;
     $('ocrStatus').style.display = (show === false) ? 'none' : 'block';
   }
 
-  // Pre-procesa la foto: reescala y pasa a gris con más contraste (mejora el OCR).
-  function preprocess(file) {
+  // Reescala la foto y la devuelve como base64 JPEG (payload liviano).
+  function fileToBase64Scaled(file) {
     return new Promise(function (resolve, reject) {
       var img = new Image();
       img.onload = function () {
-        var maxW = 1600, minW = 1000;
-        var scale = img.width > maxW ? maxW / img.width : (img.width < minW ? minW / img.width : 1);
+        var maxW = 1280;
+        var scale = img.width > maxW ? maxW / img.width : 1;
         var w = Math.max(1, Math.round(img.width * scale));
         var h = Math.max(1, Math.round(img.height * scale));
         var c = document.createElement('canvas'); c.width = w; c.height = h;
-        var ctx = c.getContext('2d');
-        ctx.drawImage(img, 0, 0, w, h);
-        try {
-          var d = ctx.getImageData(0, 0, w, h), p = d.data;
-          for (var i = 0; i < p.length; i += 4) {
-            var g = 0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2];
-            g = (g - 128) * 1.35 + 128;
-            g = g < 0 ? 0 : (g > 255 ? 255 : g);
-            p[i] = p[i + 1] = p[i + 2] = g;
-          }
-          ctx.putImageData(d, 0, 0);
-        } catch (e) {}
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
         try { URL.revokeObjectURL(img.src); } catch (e) {}
-        resolve(c);
+        var dataUrl = c.toDataURL('image/jpeg', 0.85);
+        resolve(dataUrl.split(',')[1]);
       };
-      img.onerror = function () { reject(new Error('img')); };
+      img.onerror = function () { reject(new Error('No pude abrir la imagen')); };
       img.src = URL.createObjectURL(file);
     });
   }
 
   function runOCR(file) {
-    if (typeof Tesseract === 'undefined') {
-      setOcr('No se pudo cargar el lector de imágenes (necesita internet la primera vez). Escribí los nombres a mano o probá de nuevo con conexión.');
+    if (!OCR_ENDPOINT) {
+      setOcr('Falta configurar el servidor de lectura (OCR_ENDPOINT arriba del código). Ver worker.js.');
       return;
     }
-    var btnPhoto = $('btnPhoto');
-    btnPhoto.disabled = true; btnPhoto.style.opacity = '.6';
+    var btn = $('btnPhoto');
+    btn.disabled = true; btn.style.opacity = '.6';
     setOcr('Preparando imagen…');
-    var worker;
-    preprocess(file).then(function (canvas) {
-      setOcr('Cargando lector…');
-      return Tesseract.createWorker('eng', 1, {
-        logger: function (m) {
-          if (m.status === 'recognizing text') setOcr('Leyendo… ' + Math.round((m.progress || 0) * 100) + '%');
-          else setOcr('Cargando lector…');
-        }
-      }).then(function (w) {
-        worker = w;
-        return worker.setParameters({
-          tessedit_char_whitelist: 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._%-+@'
-        });
-      }).then(function () {
-        return worker.recognize(canvas);
+    fileToBase64Scaled(file).then(function (b64) {
+      setOcr('Leyendo con IA…');
+      return fetch(OCR_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: b64, mimeType: 'image/jpeg' })
       });
-    }).then(function (res) {
-      if (worker) { try { worker.terminate(); } catch (e) {} }
-      var text = (res && res.data && res.data.text) || '';
-      var emails = text.match(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+/g) || [];
-      var seen = {}, users = [];
-      emails.forEach(function (e) {
-        var u = e.split('@')[0].trim().toLowerCase();
+    }).then(function (r) {
+      return r.json().then(function (data) {
+        if (!r.ok) throw new Error((data && data.error) || ('HTTP ' + r.status));
+        return data;
+      });
+    }).then(function (data) {
+      var users = (data && data.users) || [];
+      var seen = {}, out = [];
+      users.forEach(function (u) {
+        u = String(u).trim().toLowerCase();
+        if (u.indexOf('@') !== -1) u = u.split('@')[0];
         u = u.replace(/^[._\-]+|[._\-]+$/g, '');
-        if (u && !seen[u]) { seen[u] = 1; users.push(u); }
+        if (u && !seen[u]) { seen[u] = 1; out.push(u); }
       });
-      if (!users.length) {
-        setOcr('No detecté ningún mail. Probá con más luz, más de cerca y sin sombra sobre la planilla.');
+      if (!out.length) {
+        setOcr('No encontré mails en la foto. Probá con más luz y de frente.');
       } else {
         var ta = $('ta');
         var prev = (ta.value || '').trim();
-        ta.value = (prev ? prev + '\n' : '') + users.join('\n');
-        setOcr('Detecté ' + users.length + ' mail(s). Revisá la lista de arriba y tocá "Agregar a la ruleta".');
+        ta.value = (prev ? prev + '\n' : '') + out.join('\n');
+        setOcr('Detecté ' + out.length + ' mail(s). Revisá la lista y tocá "Agregar a la ruleta".');
       }
-    }).catch(function () {
-      if (worker) { try { worker.terminate(); } catch (e) {} }
-      setOcr('No pude leer la imagen. Probá de nuevo con una foto más nítida.');
+    }).catch(function (err) {
+      setOcr('No pude leer la imagen: ' + (err && err.message ? err.message : 'error') + '. ¿Hay internet? ¿El Worker está activo?');
     }).then(function () {
       var b = $('btnPhoto'); b.disabled = false; b.style.opacity = '1';
     });
