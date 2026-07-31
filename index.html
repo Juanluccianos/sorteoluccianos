@@ -530,18 +530,18 @@
       var users = (data && data.users) || [];
       var seen = {}, out = [];
       users.forEach(function (u) {
-        u = String(u).trim().toLowerCase();
-        if (u.indexOf('@') !== -1) u = u.split('@')[0];
-        u = u.replace(/^[._\-]+|[._\-]+$/g, '');
-        if (u && !seen[u]) { seen[u] = 1; out.push(u); }
+        u = String(u).trim();
+        if (u.indexOf('@') !== -1) u = u.split('@')[0].trim();
+        var key = u.toLowerCase();
+        if (u && !seen[key]) { seen[key] = 1; out.push(u); }
       });
       if (!out.length) {
-        setOcr('No encontré mails en la foto. Probá con más luz y de frente.');
+        setOcr('No encontré participantes en la foto. Probá con más luz y de frente.');
       } else {
         var ta = $('ta');
         var prev = (ta.value || '').trim();
         ta.value = (prev ? prev + '\n' : '') + out.join('\n');
-        setOcr('Detecté ' + out.length + ' mail(s). Revisá la lista y tocá "Agregar a la ruleta".');
+        setOcr('Detecté ' + out.length + ' participante(s). Revisá la lista y tocá "Agregar a la ruleta".');
       }
     }).catch(function (err) {
       setOcr('No pude leer la imagen: ' + (err && err.message ? err.message : 'error') + '. ¿Hay internet? ¿El Worker está activo?');
