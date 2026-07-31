@@ -1,5 +1,5 @@
 /* Service worker: uso sin conexión + siempre trae la última versión del HTML. */
-const CACHE = 'ruleta-sorteo-v4';
+const CACHE = 'ruleta-sorteo-v5';
 const ASSETS = [
   './',
   './index.html',
