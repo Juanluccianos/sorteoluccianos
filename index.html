@@ -41,8 +41,12 @@
       <div style="padding:20px 22px 14px;">
         <div style="font-family:Georgia, serif; font-size:16px; color:#141414; margin-bottom:8px;">Agregá participantes</div>
         <textarea id="ta" placeholder="Pegá los nombres, uno por línea…&#10;&#10;María López&#10;Juan Pérez&#10;Sofía Gómez" style="width:100%; height:120px; resize:none; padding:12px; border:1px solid #D8CEB8; border-radius:10px; background:#fff; font-size:15px; font-family:inherit; color:#2A2622; line-height:1.45;"></textarea>
+        <input id="cameraInput" type="file" accept="image/*" capture="environment" style="display:none;">
         <input id="photoInput" type="file" accept="image/*" style="display:none;">
-        <button id="btnPhoto" style="width:100%; margin-top:10px; padding:11px; border:1.5px solid #C8A24B; border-radius:10px; background:#fff; color:#8a6d24; font-size:14.5px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:9px;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg><span>Cargar desde foto</span></button>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button id="btnCamera" style="flex:1; padding:11px 6px; border:1.5px solid #C8A24B; border-radius:10px; background:#fff; color:#8a6d24; font-size:14px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg><span>Tomar foto</span></button>
+          <button id="btnPhoto" style="flex:1; padding:11px 6px; border:1.5px solid #C8B79A; border-radius:10px; background:#fff; color:#6f6552; font-size:14px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15l-5-5L5 21"></path></svg><span>Galería</span></button>
+        </div>
         <div id="ocrStatus" style="display:none; margin-top:8px; font-size:12.5px; color:#8a7f68; line-height:1.4;"></div>
         <button id="btnAdd" style="width:100%; margin-top:10px; padding:12px; border:none; border-radius:10px; background:#141414; color:#fff; font-size:15px; font-weight:600; cursor:pointer; letter-spacing:.3px;">Agregar a la ruleta</button>
       </div>
@@ -477,6 +481,12 @@
     $('ocrStatus').style.display = (show === false) ? 'none' : 'block';
   }
 
+  function setPhotoBtns(disabled) {
+    ['btnCamera', 'btnPhoto'].forEach(function (id) {
+      var b = $(id); if (b) { b.disabled = disabled; b.style.opacity = disabled ? '.6' : '1'; }
+    });
+  }
+
   // Reescala la foto y la devuelve como base64 JPEG (payload liviano).
   function fileToBase64Scaled(file) {
     return new Promise(function (resolve, reject) {
@@ -502,8 +512,7 @@
       setOcr('Falta configurar el servidor de lectura (OCR_ENDPOINT arriba del código). Ver worker.js.');
       return;
     }
-    var btn = $('btnPhoto');
-    btn.disabled = true; btn.style.opacity = '.6';
+    setPhotoBtns(true);
     setOcr('Preparando imagen…');
     fileToBase64Scaled(file).then(function (b64) {
       setOcr('Leyendo con IA…');
@@ -537,7 +546,7 @@
     }).catch(function (err) {
       setOcr('No pude leer la imagen: ' + (err && err.message ? err.message : 'error') + '. ¿Hay internet? ¿El Worker está activo?');
     }).then(function () {
-      var b = $('btnPhoto'); b.disabled = false; b.style.opacity = '1';
+      setPhotoBtns(false);
     });
   }
 
@@ -555,6 +564,12 @@
   $('adminClose').addEventListener('click', closeAdmin);
   $('gateInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') submitGate(); });
 
+  $('btnCamera').addEventListener('click', function () { $('cameraInput').click(); });
+  $('cameraInput').addEventListener('change', function () {
+    var file = $('cameraInput').files && $('cameraInput').files[0];
+    $('cameraInput').value = '';
+    if (file) runOCR(file);
+  });
   $('btnPhoto').addEventListener('click', function () { $('photoInput').click(); });
   $('photoInput').addEventListener('change', function () {
     var file = $('photoInput').files && $('photoInput').files[0];
