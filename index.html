@@ -769,16 +769,38 @@
     }
     setPhotoBtns(true);
     setOcr('Preparando imagen…');
-    fileToBase64Scaled(file).then(function (b64) {
+
+    // Contador de segundos para que se vea que está trabajando (el plan gratis de
+    // Gemini puede tardar cuando está saturado y el Worker prueba varios modelos).
+    var t0 = 0, tick = null;
+    function startTick() {
+      t0 = Date.now();
       setOcr('Leyendo con IA…');
+      tick = setInterval(function () {
+        var s = Math.round((Date.now() - t0) / 1000);
+        setOcr('Leyendo con IA… ' + s + ' s' + (s >= 15 ? ' (Gemini está lento, sigo probando)' : ''));
+      }, 1000);
+    }
+    function stopTick() { if (tick) { clearInterval(tick); tick = null; } }
+
+    // Tope del lado de la tablet: un poco más que el tope total del Worker (55 s).
+    var ctrl = ('AbortController' in window) ? new AbortController() : null;
+    var killer = null;
+    var fromServer = false;   // true si el error lo mandó el Worker (no es falta de internet)
+
+    fileToBase64Scaled(file).then(function (b64) {
+      startTick();
+      if (ctrl) killer = setTimeout(function () { ctrl.abort(); }, 70000);
       return fetch(OCR_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: b64, mimeType: 'image/jpeg' })
+        body: JSON.stringify({ imageBase64: b64, mimeType: 'image/jpeg' }),
+        signal: ctrl ? ctrl.signal : undefined
       });
     }).then(function (r) {
-      return r.json().then(function (data) {
-        if (!r.ok) throw new Error((data && data.error) || ('HTTP ' + r.status));
+      fromServer = true;
+      return r.json().catch(function () { return null; }).then(function (data) {
+        if (!r.ok) throw new Error((data && data.error) || ('El servidor respondió HTTP ' + r.status));
         return data;
       });
     }).then(function (data) {
@@ -799,8 +821,19 @@
         setOcr('Detecté ' + out.length + ' participante(s). Revisá la lista y tocá "Agregar a la ruleta".');
       }
     }).catch(function (err) {
-      setOcr('No pude leer la imagen: ' + (err && err.message ? err.message : 'error') + '. ¿Hay internet? ¿El Worker está activo?');
+      var msg = (err && err.message) ? err.message : 'error';
+      if (err && err.name === 'AbortError') {
+        setOcr('No pude leer la imagen: tardó demasiado. Probá de nuevo o cargá los nombres a mano.');
+      } else if (fromServer) {
+        // El Worker contestó con un error (Gemini saturado, cuota, etc.): mostrarlo tal cual.
+        setOcr('No pude leer la imagen: ' + msg);
+      } else {
+        // Ni siquiera llegó al Worker: acá sí es conexión.
+        setOcr('No pude conectarme con el servidor de lectura (' + msg + '). ¿Hay internet?');
+      }
     }).then(function () {
+      stopTick();
+      if (killer) clearTimeout(killer);
       setPhotoBtns(false);
     });
   }
